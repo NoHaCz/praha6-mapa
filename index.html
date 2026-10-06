@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI eDeska Praha 6 (neoficiální)</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    
+    <style>
+        :root {
+            --bg-main: #f8fafc;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --dark: #0f172a;
+            --gray-border: #cbd5e1;
+            --gray-text: #64748b;
+            --red: #c8102e;
+        }
+
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; height: 100dvh; background: var(--bg-main); color: #334155; }
+
+        /* Header */
+        #header { background: white; padding: 8px 20px; display: flex; flex-direction: column; align-items: center; z-index: 1000; border-bottom: 3px solid var(--red); }
+        #header h1 { margin: 0; font-size: 20px; font-weight: 800; color: var(--red); line-height: 1.2; }
+        #header .subtitle { font-size: 12px; font-weight: 700; color: var(--red); text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Lišta dole: stav dat, prohlášení, hlášení chyb */
+        #footer-note { display: flex; background: white; border-top: 2px solid var(--red); color: var(--red); font-size: 12px; line-height: 1.4; padding: 6px 20px; align-items: center; justify-content: space-between; gap: 10px; z-index: 1000; }
+        #footer-note a { color: var(--red); }
+        #status { display: block; color: #64748b; margin-bottom: 2px; }
+        .btn-report { background: white; color: var(--red); border: 1px solid var(--red); border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+        .btn-report:hover { background: #fef2f2; }
+        .report-list { font-size: 13.5px; line-height: 1.6; color: #1e293b; padding-left: 20px; margin: 8px 0; }
+
+        /* Toolbar & Filtry */
+        #toolbar { background: white; border-bottom: 1px solid var(--gray-border); padding: 10px 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; z-index: 999; }
+        .filter-group { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+        .filter-group label { color: #475569; white-space: nowrap; }
+        input[type="text"], input[type="date"], select { padding: 6px 10px; border: 1px solid var(--gray-border); border-radius: 6px; font-size: 13px; outline: none; background: white; color: #334155; }
+        input[type="text"]:focus, input[type="date"]:focus, select:focus { border-color: var(--primary); }
+
+        /* Výběr data */
+        .date-group { display: flex; align-items: center; gap: 6px; }
+        .date-pair { display: flex; align-items: center; gap: 6px; }
+
+        .view-toggle { display: flex; background: #e2e8f0; padding: 3px; border-radius: 8px; margin-left: auto; }
+        .view-btn { border: none; background: transparent; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: #475569; transition: all 0.2s; }
+        .view-btn.active { background: white; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        /* Tlačítko Moje poloha */
+        .btn-location { background: white; border: 1px solid var(--gray-border); border-radius: 6px; padding: 6px 10px; font-size: 13px; font-weight: 600; cursor: pointer; color: #334155; display: flex; align-items: center; gap: 4px; transition: all 0.2s; }
+        .btn-location:hover { background: #f1f5f9; border-color: var(--primary); color: var(--primary); }
+
+        /* Hlavní kontejner */
+        #content-container { flex: 1; position: relative; overflow: hidden; }
+        #map-view { width: 100%; height: 100%; position: absolute; top:0; left:0; }
+        #list-view { width: 100%; height: 100%; position: absolute; top:0; left:0; display: none; overflow-y: auto; padding: 20px; background: #f1f5f9; }
+
+        body.show-list #map-view { display: none; }
+        body.show-list #list-view { display: block; }
+
+        /* Kartičky v Seznamu */
+        .cards-grid { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+        .card { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: transform 0.15s, box-shadow 0.15s; }
+        .card:hover { border-color: #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .card.highlighted { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2); background: #f8fafc; }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+        .card-title { font-size: 16px; font-weight: 700; color: #0f172a; margin: 0; cursor: pointer; }
+        .card-title:hover { color: var(--primary); }
+
+        /* Štítky (Badges) */
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+        .badge-cat { background: #e0f2fe; color: #0369a1; }
+        .badge-doc { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        .badge-no-map { background: #fee2e2; color: #991b1b; }
+
+        .meta-row { font-size: 12px; color: #64748b; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 12px; }
+        .summary-text { font-size: 13.5px; color: #334155; line-height: 1.5; margin: 8px 0; }
+        .card-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px solid #f1f5f9; font-size: 12px; flex-wrap: wrap; gap: 8px; }
+        .card-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+        /* Detail Modal */
+        .modal-backdrop { position: fixed; top:0; left:0; width:100vw; height:100vh; background: rgba(15,23,42,0.6); display: none; justify-content: center; align-items: center; z-index: 2000; padding: 20px; backdrop-filter: blur(2px); }
+        .modal-backdrop.open { display: flex; }
+        .modal-card { background: white; width: 100%; max-width: 680px; max-height: 85vh; border-radius: 12px; overflow-y: auto; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); position: relative; }
+        .modal-close { position: absolute; top: 16px; right: 16px; background: #f1f5f9; border: none; font-size: 18px; cursor: pointer; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .modal-close:hover { background: #e2e8f0; }
+
+        .btn-detail { background: #eff6ff; color: var(--primary); border: 1px solid #bfdbfe; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+        .btn-detail:hover { background: #dbeafe; }
+        .btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        .btn-secondary:hover { background: #e2e8f0; }
+        .btn-edeska { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+        .btn-edeska:hover { background: #dcfce7; }
+        .btn-share { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+        .btn-share:hover { background: #fde68a; }
+
+        /* Vlastní ikony pro špendlíky */
+        .custom-pin {
+            width: 24px;
+            height: 24px;
+            border-radius: 50% 50% 50% 0;
+            position: absolute;
+            transform: rotate(-45deg);
+            left: 50%;
+            top: 50%;
+            margin: -20px 0 0 -12px;
+            border: 2px solid #ffffff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        }
+        .custom-pin::after {
+            content: '';
+            width: 8px;
+            height: 8px;
+            margin: 6px 0 0 6px;
+            background: #ffffff;
+            position: absolute;
+            border-radius: 50%;
+        }
+
+        @media (max-width: 768px) {
+            #toolbar { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px; }
+            .filter-group { flex-wrap: wrap; }
+            .date-group { width: 100%; }
+            .date-pair { flex: 1; min-width: 210px; }
+            .date-pair input { flex: 1; min-width: 0; }
+            .view-toggle { margin-left: 0; width: 100%; justify-content: center; }
+            #header { padding: 6px 12px; border-bottom-width: 2px; }
+            #header h1 { font-size: 17px; }
+            #header .subtitle { font-size: 10.5px; }
+            #footer-note { font-size: 11.5px; padding: 6px 12px; }
+            .view-btn { flex: 1; text-align: center; }
+            .modal-card { max-height: 92vh; padding: 16px; border-radius: 12px 12px 0 0; }
+            .modal-backdrop { padding: 0; align-items: flex-end; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="header">
+        <h1>AI eDeska Praha 6</h1>
+        <div class="subtitle">neoficiální</div>
+    </div>
+
+    <div id="toolbar">
+        <div class="filter-group date-group">
+            <span class="date-pair"><label>Vyvěšeno od:</label> <input type="date" id="dateFrom"></span>
+            <span class="date-pair"><label>do:</label> <input type="date" id="dateTo"></span>
+        </div>
+
+        <div class="filter-group">
+            <label>Kategorie:</label>
+            <select id="categoryFilter">
+                <option value="all">Všechny kategorie</option>
+            </select>
+        </div>
+
+        <div class="filter-group" style="flex: 1; min-width: 200px;">
+            <input type="text" id="searchInput" placeholder="Hledat v názvu, shrnutí, spisové značce..." style="width: 100%;">
+        </div>
+
+        <button class="btn-location" id="btnLocation" title="Moje poloha">
+            📍 Moje poloha
+        </button>
+
+        <div class="view-toggle">
+            <button class="view-btn active" id="btnMap">🗺️ Mapa</button>
+            <button class="view-btn" id="btnList">📋 Seznam</button>
+        </div>
+    </div>
+
+    <div id="content-container">
+        <div id="map-view"></div>
+        <div id="list-view">
+            <div class="cards-grid" id="cardsContainer"></div>
+        </div>
+    </div>
+
+    <div id="footer-note">
+        <div>
+            <span id="status">Připojování ke Google Drive...</span>
+            <div>AI výtah z <a href="https://www.praha6.cz/cs/uredni-deska/uredni-deska-rozcestnik.html" target="_blank" rel="noopener">oficiální eDesky</a>, může obsahovat chyby · Jan Klátil</div>
+        </div>
+        <button class="btn-report" onclick="showReportModal()">⚠️ Chyba?</button>
+    </div>
+
+    <!-- Detail Modal Window -->
+    <div class="modal-backdrop" id="detailModal">
+        <div class="modal-card">
+            <button class="modal-close" onclick="closeModal()">✕</button>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet MarkerCluster JS -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <!-- Klíč ke Google API a ID složky web na Disku: config.js (není v Gitu, vzor config.example.js) -->
+    <script src="config.js"></script>
+
+    <script>
+        const { API_KEY, FOLDER_ID, ONLY_FEED } = window.MAPA_CONFIG || {};
+
+        let allItems = [];
+        let filteredItems = [];
+        let map;
+        let markerClusterGroup;
+        let itemMarkerMap = {};
+        let userLocationMarker = null;
+
+        const categoryColors = [
+            '#2563eb', '#dc2626', '#16a34a', '#d97706', 
+            '#9333ea', '#0891b2', '#e11d48', '#4d7c0f'
+        ];
+        const categoryColorMap = {};
+
+        map = L.map('map-view').setView([50.103, 14.345], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap | Adresy, ulice a hranice: RÚIAN, © ČÚZK (CC BY 4.0)'
+        }).addTo(map);
+
+        markerClusterGroup = L.markerClusterGroup({
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true,
+            maxClusterRadius: 35
+        });
+        map.addLayer(markerClusterGroup);
+
+        const statusEl = document.getElementById('status');
+
+        async function fetchAllData() {
+            try {
+                const res = await fetch('/api/data');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.items) return data.items;
+                }
+            } catch (e) {}
+
+            const polozkyFileId = await getFileIdFromDrive('polozky.json');
+            return await fetchJsonFromDrive(polozkyFileId);
+        }
+
+        async function fetchGeoJsonBoundary() {
+            try {
+                const res = await fetch('/api/geojson');
+                if (res.ok) {
+                    const geojsonData = await res.json();
+                    L.geoJSON(geojsonData, {
+                        style: { color: '#e11d48', weight: 2, fillOpacity: 0.05 }
+                    }).addTo(map);
+                    return;
+                }
+            } catch (e) {}
+
+            try {
+                const p3FileId = await getFileIdFromDrive('praha6.geojson');
+                const geojsonData = await fetchJsonFromDrive(p3FileId);
+                L.geoJSON(geojsonData, {
+                    style: { color: '#e11d48', weight: 2, fillOpacity: 0.05 }
+                }).addTo(map);
+            } catch (e) {
+                console.warn('Hranice nebyly načteny:', e.message);
+            }
+        }
+
+        async function getFileIdFromDrive(fileName) {
+            const query = encodeURIComponent(`'${FOLDER_ID}' in parents and name='${fileName}' and trashed=false`);
+            const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,modifiedTime)&key=${API_KEY}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Google Drive API chyba ${res.status}`);
+            const data = await res.json();
+            if (data.files && data.files.length > 0) return data.files[0].id;
+            throw new Error(`Soubor "${fileName}" nebyl nalezen.`);
+        }
+
+        async function fetchJsonFromDrive(fileId) {
+            const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${API_KEY}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Chyba stažení (${res.status})`);
+            const data = await res.json();
+            return data.items || data;
+        }
+
+        function setupDateInputs(items) {
+            let maxDateStr = null;
+            items.forEach(i => {
+                if (i.posted) {
+                    const d = i.posted.split('T')[0];
+                    if (!maxDateStr || d > maxDateStr) maxDateStr = d;
+                }
+            });
+            document.getElementById('dateFrom').value = '2025-01-01';
+            if (maxDateStr) document.getElementById('dateTo').value = maxDateStr;
+        }
+
+        function populateCategories(items) {
+            const categories = new Set();
+            items.forEach(i => { if (i.category) categories.add(i.category); });
+            const select = document.getElementById('categoryFilter');
+            select.innerHTML = '<option value="all">Všechny kategorie</option>';
+            let colorIndex = 0;
+            categories.forEach(cat => {
+                categoryColorMap[cat] = categoryColors[colorIndex % categoryColors.length];
+                colorIndex++;
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                select.appendChild(opt);
+            });
+        }
+
+        function createCategoryIcon(category) {
+            const color = categoryColorMap[category] || '#64748b';
+            return L.divIcon({
+                className: 'custom-pin-container',
+                html: `<div class="custom-pin" style="background-color: ${color};"></div>`,
+                iconSize: [30, 42],
+                iconAnchor: [15, 42],
+                popupAnchor: [0, -35]
+            });
+        }
+
+        function getEdeskyUrl(item) {
+            return item.edeskyUrl || null;
+        }
+
+        let searchTimeout;
+        function applyFilters() {
+            const dateFromVal = document.getElementById('dateFrom').value;
+            const dateToVal = document.getElementById('dateTo').value;
+            const fromDate = dateFromVal ? new Date(dateFromVal + 'T00:00:00') : null;
+            const toDate = dateToVal ? new Date(dateToVal + 'T23:59:59') : null;
+            const catVal = document.getElementById('categoryFilter').value;
+            const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
+
+            filteredItems = allItems.filter(item => {
+                if (item.posted) {
+                    const postedDate = new Date(item.posted);
+                    if (fromDate && postedDate < fromDate) return false;
+                    if (toDate && postedDate > toDate) return false;
+                }
+                if (catVal !== 'all' && item.category !== catVal) return false;
+                if (searchVal) {
+                    const titleMatch = item.title && item.title.toLowerCase().includes(searchVal);
+                    const summaryMatch = item.summary && item.summary.toLowerCase().includes(searchVal);
+                    const issuerMatch = item.issuer && item.issuer.toLowerCase().includes(searchVal);
+                    const caseRefsMatch = item.caseRefs && item.caseRefs.some(ref => ref.toLowerCase().includes(searchVal));
+                    if (!titleMatch && !summaryMatch && !issuerMatch && !caseRefsMatch) return false;
+                }
+                return true;
+            });
+
+            filteredItems.sort((a, b) => new Date(b.posted || 0) - new Date(a.posted || 0));
+
+            renderMapMarkers();
+            renderList();
+            updateStatus();
+        }
+
+        function renderMapMarkers() {
+            markerClusterGroup.clearLayers();
+            itemMarkerMap = {};
+
+            filteredItems.forEach(item => {
+                if (item.places && item.places.length > 0) {
+                    item.places.forEach(place => {
+                        if (place.point) {
+                            const lat = place.point[1];
+                            const lng = place.point[0];
+                            const marker = L.marker([lat, lng], { icon: createCategoryIcon(item.category) });
+                            
+                            const popupContent = `
+                                <div style="padding:4px;">
+                                    <div style="font-size:11px; color:${categoryColorMap[item.category] || '#0369a1'}; font-weight:700; text-transform:uppercase;">${item.category || ''}</div>
+                                    <h4 style="margin:4px 0; font-size:14px; color:#0f172a;">${item.title}</h4>
+                                    <div style="font-size:11.5px; color:#64748b; margin-bottom:4px;"><strong>Vyvěšeno:</strong> ${item.posted || '—'}</div>
+                                    <p style="font-size:12px; color:#475569; margin:6px 0;">${item.summary || ''}</p>
+                                    <div style="display:flex; gap:6px; margin-top:6px;">
+                                        <button class="btn-detail" style="flex:1;" onclick="showDetailModal('${item.id}')">Detailní informace</button>
+                                        <button class="btn-detail btn-secondary" style="flex:1;" onclick="showItemInList('${item.id}')">📋 Seznam</button>
+                                    </div>
+                                </div>
+                            `;
+                            marker.bindPopup(popupContent);
+                            markerClusterGroup.addLayer(marker);
+                            itemMarkerMap[item.id] = marker;
+                        }
+                    });
+                }
+            });
+        }
+
+        function zoomToItem(itemId) {
+            const item = allItems.find(i => i.id === itemId);
+            if (!item || !item.places || item.places.length === 0 || !item.places[0].point) return;
+
+            document.body.classList.remove('show-list');
+            document.getElementById('btnMap').classList.add('active');
+            document.getElementById('btnList').classList.remove('active');
+            map.invalidateSize();
+
+            const lat = item.places[0].point[1];
+            const lng = item.places[0].point[0];
+            map.flyTo([lat, lng], 17, { duration: 1.2 });
+
+            const marker = itemMarkerMap[itemId];
+            if (marker) {
+                markerClusterGroup.zoomToShowLayer(marker, () => { marker.openPopup(); });
+            }
+        }
+
+        function showItemInList(itemId) {
+            closeModal();
+            document.body.classList.add('show-list');
+            document.getElementById('btnList').classList.add('active');
+            document.getElementById('btnMap').classList.remove('active');
+
+            setTimeout(() => {
+                const cardEl = document.getElementById('card-' + itemId);
+                if (cardEl) {
+                    cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    cardEl.classList.add('highlighted');
+                    setTimeout(() => cardEl.classList.remove('highlighted'), 2500);
+                }
+            }, 100);
+        }
+
+        function renderList() {
+            const container = document.getElementById('cardsContainer');
+            container.innerHTML = '';
+
+            if (filteredItems.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:40px; color:#64748b;">Žádné položky neodpovídají zvolenému filtru.</div>';
+                return;
+            }
+
+            filteredItems.forEach(item => {
+                const hasLocation = item.places && item.places.length > 0 && item.places.some(p => p.point);
+                const catColor = categoryColorMap[item.category] || '#0369a1';
+
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.id = 'card-' + item.id;
+                card.innerHTML = `
+                    <div class="card-header">
+                        <h3 class="card-title" onclick="showDetailModal('${item.id}')">${item.title}</h3>
+                        <div style="display:flex; gap:6px; flex-shrink:0;">
+                            <span class="badge" style="background:${catColor}15; color:${catColor}; border: 1px solid ${catColor}40;">${item.category || 'Nezařazeno'}</span>
+                            ${hasLocation ? '' : '<span class="badge badge-no-map">Bez lokace</span>'}
+                        </div>
+                    </div>
+                    
+                    <div class="meta-row">
+                        <span><strong>Vyvěšeno:</strong> ${item.posted || '—'}</span>
+                        <span><strong>Do:</strong> ${item.until || 'neurčeno'}</span>
+                        ${item.issuer ? `<span><strong>Vydavatel:</strong> ${item.issuer}</span>` : ''}
+                        ${item.documentType ? `<span class="badge badge-doc">${item.documentType}</span>` : ''}
+                    </div>
+
+                    <div class="summary-text">${item.summary || 'Bez detailního shrnutí.'}</div>
+
+                    <div class="card-footer">
+                        <div>
+                            ${item.caseRefs && item.caseRefs.length > 0 ? `<strong>ČJ/Spis:</strong> ${item.caseRefs.join(', ')}` : ''}
+                        </div>
+                        <div class="card-actions">
+                            ${hasLocation ? `<button class="btn-detail btn-secondary" onclick="zoomToItem('${item.id}')">📍 Mapa</button>` : ''}
+                            <button class="btn-detail" onclick="showDetailModal('${item.id}')">Detailní informace</button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function showDetailModal(itemId, updateHash = true) {
+            const item = allItems.find(i => i.id === itemId);
+            if (!item) return;
+
+            if (updateHash) {
+                history.replaceState(null, '', '#doc-' + itemId);
+            }
+
+            const modal = document.getElementById('detailModal');
+            const modalBody = document.getElementById('modalContent');
+
+            const caseRefsHtml = item.caseRefs && item.caseRefs.length > 0 
+                ? item.caseRefs.map(ref => `<span class="badge badge-doc" style="margin-right:4px;">${ref}</span>`).join('') 
+                : '—';
+
+            const actionHtml = item.action ? `
+                <div style="background: #fffbeb; border: 1px solid #fde68a; padding: 12px; border-radius: 8px; margin: 14px 0;">
+                    <strong style="color: #b45309; font-size:13px;">⚡ Akce / Lhůta:</strong> <span style="font-weight:600;">${item.action.type || 'Lhůta'}</span><br>
+                    ${item.action.deadline ? `<div style="font-size:13px; margin-top:4px;"><strong>Termín odvolání:</strong> ${item.action.deadline}</div>` : ''}
+                    ${item.action.note ? `<div style="font-size:12px; color: #78350f; margin-top:4px;">${item.action.note}</div>` : ''}
+                </div>
+            ` : '';
+
+            const catColor = categoryColorMap[item.category] || '#0369a1';
+            const edeskyUrl = getEdeskyUrl(item);
+            const hasLocation = item.places && item.places.length > 0 && item.places.some(p => p.point);
+
+            modalBody.innerHTML = `
+                <div style="margin-bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap;">
+                    <span class="badge" style="background:${catColor}15; color:${catColor}; border: 1px solid ${catColor}40;">${item.category || 'Nezařazeno'}</span>
+                    <span class="badge badge-doc">${item.documentType || 'Dokument'}</span>
+                    ${hasLocation ? '' : '<span class="badge badge-no-map">Bez lokace na mapě</span>'}
+                </div>
+                
+                <h2 style="margin: 0 0 12px 0; font-size: 19px; color: #0f172a; line-height: 1.3;">${item.title}</h2>
+                
+                <div style="font-size: 12.5px; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; background:#f8fafc; padding:10px; border-radius:8px;">
+                    <div><strong>Vyvěšeno:</strong> ${item.posted || '—'}</div>
+                    <div><strong>Svěšeno / Do:</strong> ${item.until || 'neurčeno'}</div>
+                    <div><strong>Vydavatel:</strong> ${item.issuer || '—'}</div>
+                    <div><strong>Žadatel:</strong> ${item.applicant || '—'}</div>
+                </div>
+
+                ${actionHtml}
+
+                <div style="margin: 14px 0;">
+                    <h4 style="margin: 0 0 6px 0; font-size: 13px; color: #334155;">Shrnutí obsahu:</h4>
+                    <p style="font-size: 13.5px; line-height: 1.6; color: #1e293b; background: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; margin: 0;">
+                        ${item.summary || 'Bez detailního shrnutí.'}
+                    </p>
+                </div>
+
+                <div style="margin: 14px 0; font-size: 13px; display: flex; flex-direction: column; gap: 6px; background:#f8fafc; padding:10px; border-radius:8px;">
+                    <div><strong>Spisové značky / ČJ:</strong> ${caseRefsHtml}</div>
+                    <div><strong>Rozsah dotčení:</strong> ${item.scope || '—'}</div>
+                </div>
+
+                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; align-items: center;">
+                    <button class="btn-detail btn-secondary" style="padding: 10px 16px; font-size: 13px; margin-right: auto; color: var(--red);" onclick="showReportModal('${item.id}')">⚠️ Nahlásit</button>
+                    <button id="shareBtn-${item.id}" class="btn-detail btn-share" style="padding: 10px 16px; font-size: 13px;" onclick="shareItem('${item.id}')">📋 Sdílet</button>
+                    ${edeskyUrl ? `<a href="${edeskyUrl}" target="_blank" rel="noopener" class="btn-detail btn-edeska" style="padding: 10px 16px; font-size: 13px;">🔗 Historie</a>` : ''}
+                    ${hasLocation ? `<button class="btn-detail btn-secondary" style="padding: 10px 16px; font-size: 13px;" onclick="closeModal(); zoomToItem('${item.id}');">📍 Mapa</button>` : ''}
+                    <button class="btn-detail btn-secondary" style="padding: 10px 16px; font-size: 13px;" onclick="showItemInList('${item.id}')">📋 Seznam</button>
+                    ${item.url ? `<a href="${item.url}" target="_blank" rel="noopener" class="btn-detail" style="padding: 10px 16px; font-size: 13px; background: #2563eb; color: white;">Oficiální eDeska P3 ↗</a>` : ''}
+                </div>
+            `;
+
+            modal.classList.add('open');
+        }
+
+        function shareItem(itemId) {
+            const url = window.location.origin + window.location.pathname + '#doc-' + itemId;
+            navigator.clipboard.writeText(url).then(() => {
+                const btn = document.getElementById('shareBtn-' + itemId);
+                if (btn) {
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '✓ Zkopírováno!';
+                    btn.style.background = '#dcfce7';
+                    btn.style.color = '#16a34a';
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.style.background = '';
+                        btn.style.color = '';
+                    }, 2000);
+                }
+            }).catch(() => {
+                prompt('Zkopírujte odkaz:', url);
+            });
+        }
+
+        const FB_PAGE_URL = '';   // stránka Prahy 6 na Facebooku; doplnit, až bude
+
+        // Hlášení chyb: zprávou na stránku na Facebooku; u konkrétní položky přidá odkaz, který lze do zprávy vložit.
+        function showReportModal(itemId) {
+            const item = itemId ? allItems.find(i => i.id === itemId) : null;
+            const itemLink = item ? window.location.origin + window.location.pathname + '#doc-' + item.id : '';
+            document.getElementById('modalContent').innerHTML = `
+                <h2 style="margin: 0 0 10px 0; font-size: 18px; color: var(--red); padding-right: 30px;">⚠️ Nahlásit problém</h2>
+                <p style="font-size: 13.5px; line-height: 1.6; margin: 0;">Texty na této stránce vytváří AI a může se splést. Napište mi prosím, když:</p>
+                <ul class="report-list">
+                    <li>je u dokumentu chybné shrnutí, místo na mapě nebo termín,</li>
+                    <li>na stránce něco nefunguje,</li>
+                    <li>zveřejněná informace obsahuje osobní údaje nebo jinak porušuje GDPR – takovou položku co nejdřív stáhnu.</li>
+                </ul>
+                ${item ? `
+                <p style="font-size: 13px; margin: 12px 0 6px 0;">Do zprávy prosím vložte odkaz na dokument:</p>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" readonly value="${itemLink}" style="flex: 1; font-size: 12px;" onclick="this.select()">
+                    <button class="btn-detail btn-secondary" onclick="navigator.clipboard.writeText('${itemLink}').then(() => this.textContent = '✓ Zkopírováno')">Kopírovat</button>
+                </div>` : ''}
+                <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                    <a href="${FB_PAGE_URL}" target="_blank" rel="noopener" class="btn-detail" style="padding: 10px 16px; font-size: 13px; background: #1877f2; color: white; border-color: #1877f2;">Napsat zprávu na Facebooku ↗</a>
+                </div>
+            `;
+            document.getElementById('detailModal').classList.add('open');
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').classList.remove('open');
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+
+        function updateStatus() {
+            const withLocationCount = filteredItems.filter(i => i.places && i.places.length > 0 && i.places.some(p => p.point)).length;
+            statusEl.textContent = `Zobrazeno ${filteredItems.length} desek (${withLocationCount} na mapě)`;
+        }
+
+        document.getElementById('btnLocation').addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('Geolokace není podporována vaším prohlížečem.');
+                return;
+            }
+            statusEl.textContent = 'Zjišťuji vaši polohu...';
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    if (userLocationMarker) map.removeLayer(userLocationMarker);
+                    userLocationMarker = L.circleMarker([lat, lng], {
+                        radius: 8,
+                        fillColor: '#2563eb',
+                        color: '#ffffff',
+                        weight: 3,
+                        opacity: 1,
+                        fillOpacity: 0.9
+                    }).addTo(map);
+                    userLocationMarker.bindPopup('<b>Vaše poloha</b>').openPopup();
+                    map.flyTo([lat, lng], 16);
+                    updateStatus();
+                },
+                (err) => {
+                    alert('Chyba při zjišťování polohy: ' + err.message);
+                    updateStatus();
+                }
+            );
+        });
+
+        document.getElementById('dateFrom').addEventListener('change', applyFilters);
+        document.getElementById('dateTo').addEventListener('change', applyFilters);
+        document.getElementById('categoryFilter').addEventListener('change', applyFilters);
+        document.getElementById('searchInput').addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(applyFilters, 250);
+        });
+
+        document.getElementById('btnMap').addEventListener('click', () => {
+            document.body.classList.remove('show-list');
+            document.getElementById('btnMap').classList.add('active');
+            document.getElementById('btnList').classList.remove('active');
+            map.invalidateSize();
+        });
+
+        document.getElementById('btnList').addEventListener('click', () => {
+            document.body.classList.add('show-list');
+            document.getElementById('btnList').classList.add('active');
+            document.getElementById('btnMap').classList.remove('active');
+        });
+
+        document.getElementById('detailModal').addEventListener('click', (e) => {
+            if (e.target.id === 'detailModal') closeModal();
+        });
+
+        function checkUrlHash() {
+            const hash = window.location.hash;
+            if (hash.startsWith('#doc-')) {
+                const docId = hash.replace('#doc-', '');
+                showDetailModal(docId, false);
+            }
+        }
+
+        window.addEventListener('hashchange', checkUrlHash);
+
+        async function init() {
+            try {
+                statusEl.textContent = 'Načítám data...';
+                fetchGeoJsonBoundary();
+                allItems = await fetchAllData();
+                // Veřejná verze bez archivu z edesky.cz, dokud k němu není svolení provozovatele (DATA.md).
+                if (ONLY_FEED) allItems = allItems.filter(item => item.source === 'feed');
+                populateCategories(allItems);
+                setupDateInputs(allItems);
+                applyFilters();
+                checkUrlHash();
+            } catch (err) {
+                console.error(err);
+                statusEl.textContent = `Chyba: ${err.message}`;
+                statusEl.style.color = 'var(--red)';
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+# Workflow veřejného repozitáře se stránkou (NoHaCz/praha6-mapa, .github/workflows/pages.yml).
+# Nakopíruje ho tam praha6/deploy.ps1 -Pages. Klíč a ID složky nejsou v repozitáři: config.js
+# se skládá z tajných proměnných repozitáře GOOGLE_API_KEY a DRIVE_FOLDER_ID.
+name: Stránka na GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Složit stránku s config.js
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        run: |
+          test -n "$GOOGLE_API_KEY" && test -n "$DRIVE_FOLDER_ID" || { echo "Chybí secrets GOOGLE_API_KEY nebo DRIVE_FOLDER_ID"; exit 1; }
+          mkdir site
+          cp index.html site/
+          printf "window.MAPA_CONFIG = { API_KEY: '%s', FOLDER_ID: '%s', ONLY_FEED: true };\n" "$GOOGLE_API_KEY" "$DRIVE_FOLDER_ID" > site/config.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
